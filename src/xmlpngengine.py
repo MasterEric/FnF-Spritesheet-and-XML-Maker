@@ -13,6 +13,11 @@ def fast_image_cmp(im1, im2): # im1 == im2 ?
     return ImageChops.difference(im1, im2).getbbox() is None
 
 def pad_img(img, clip=False, top=2, right=2, bottom=2, left=2):
+    if img.getbbox() is None:
+        # If box is none, the image is empty. We can optimize it.
+        result = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+        return result
+    
     if clip:
         img = img.crop(img.getbbox())
     
@@ -96,8 +101,13 @@ def calculate_final_size(imdict, imlist, num_cols, clip, reuse):
                     heights.append(h + 4)
                 else:
                     box = spsh.crop((x, y, x+w, y+h)).getbbox()
-                    widths.append(box[2] - box[0] + 4)
-                    heights.append(box[3] - box[1] + 4)
+                    if box is None:
+                      # This frame is empty; save space by using a 1x1 blank pixel.
+                      widths.append(1)
+                      heights.append(1)
+                    else:
+                      widths.append(box[2] - box[0] + 4)
+                      heights.append(box[3] - box[1] + 4)
             else:
                 for _ in poselist:
                     if not clip:
@@ -105,8 +115,13 @@ def calculate_final_size(imdict, imlist, num_cols, clip, reuse):
                         heights.append(h + 4)
                     else:
                         box = spsh.crop((x, y, x+w, y+h)).getbbox()
-                        widths.append(box[2] - box[0] + 4)
-                        heights.append(box[3] - box[1] + 4)
+                        if box is None:
+                            # If box is none, the image is empty. We can optimize it.
+                            widths.append(1)
+                            heights.append(1)
+                        else:
+                            widths.append(box[2] - box[0] + 4)
+                            heights.append(box[3] - box[1] + 4)
         spsh.close()
     print(f"Len of widths and heights: {len(widths)}")
     row_width_sums = []
@@ -184,7 +199,11 @@ def make_png_xml(frames, save_dir, character_name="Result", progressupdatefn=Non
             exceptionmsg = str(e)
             return 1, exceptionmsg
         else:
-            new_img = pad_img(old_img, clip)
+            if old_img.getbbox() is None:
+                # If box is none, the image is empty. We can optimize it.
+                new_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+            else:
+                new_img = pad_img(old_img, clip)
             row = i // num_cols
             col = i % num_cols
             if col == 0:
@@ -227,7 +246,11 @@ def make_png_xml(frames, save_dir, character_name="Result", progressupdatefn=Non
                 exceptionmsg = str(e)
                 return 1, exceptionmsg
             else:
-                new_img = pad_img(old_img, clip)
+                if old_img.getbbox() is None:
+                    # If box is none, the image is empty. We can optimize it.
+                    new_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+                else:
+                    new_img = pad_img(old_img, clip)
             
             if reuse_sprites_level >= 1:
                 row = i // num_cols
@@ -261,6 +284,14 @@ def make_png_xml(frames, save_dir, character_name="Result", progressupdatefn=Non
                     stname = (character_name if prefix_type == 'charname' else custom_prefix) + " " + pose
                 else:
                     stname = (character_name + " " if modified else "") + pose
+
+                img_size = {'width': new_img.width, 'height': new_img.height}
+
+                if old_img.getbbox() is None and frameinfo[2] is None and frameinfo[3] is None:
+                    # If box is none, the image is empty. Make sure to save the original size though.
+                    img_size['width'] = old_img.width
+                    img_size['height'] = old_img.height
+
                 subtexture_element.attrib = {
                     "name" : stname,
                     "x": f'{csx}',
@@ -269,8 +300,8 @@ def make_png_xml(frames, save_dir, character_name="Result", progressupdatefn=Non
                     "height": f'{new_img.height}',
                     "frameX": f'{frameinfo[0]}' if frameinfo[0] and not clip else '0', # checking clip checkbox will override any spriteframe settings
                     "frameY": f'{frameinfo[1]}' if frameinfo[1] and not clip else '0',
-                    "frameWidth": f'{frameinfo[2]}' if frameinfo[2] and frameinfo[2] != 'default' and str(frameinfo[2]).isnumeric() and not clip else f'{new_img.width}',
-                    "frameHeight": f'{frameinfo[3]}' if frameinfo[3] and frameinfo[3] != 'default' and str(frameinfo[3]).isnumeric() and not clip else f'{new_img.height}',
+                    "frameWidth": f'{frameinfo[2]}' if frameinfo[2] and frameinfo[2] != 'default' and str(frameinfo[2]).isnumeric() and not clip else f'{img_size["width"]}',
+                    "frameHeight": f'{frameinfo[3]}' if frameinfo[3] and frameinfo[3] != 'default' and str(frameinfo[3]).isnumeric() and not clip else f'{img_size["height"]}',
                 }
                 root.append(subtexture_element)
             
